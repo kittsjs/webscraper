@@ -10,7 +10,8 @@
     "build:watch": "esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --watch --external:puppeteer --external:express",
     "start": "node index.js",
     "start:prod": "node dist/index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "postinstall": "npx puppeteer@latest install chrome",
   },
   "keywords": ["scraper", "ecommerce", "images"],
   "author": "",
