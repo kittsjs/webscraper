@@ -11,7 +11,7 @@
     "start": "node index.js",
     "start:prod": "node dist/index.js",
     "dev": "nodemon index.js",
-    "postinstall": "npx puppeteer@latest install chrome",
+    "postinstall": "npx puppeteer@latest install chrome"
   },
   "keywords": ["scraper", "ecommerce", "images"],
   "author": "",
