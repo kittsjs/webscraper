@@ -70,6 +70,7 @@ class ScraperService {
       // Launch browser with headless mode and stealth settings
       browser = await puppeteer.launch({
         headless: 'new',
+        executablePath: puppeteer.executablePath(),
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
