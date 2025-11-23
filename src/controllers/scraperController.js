@@ -6,7 +6,7 @@ class ScraperController {
    */
   async extractImages(req, res) {
     try {
-      const { url } = req.query;
+      let { url } = req.query;
 
       console.log('url', url);
       if (!url) {
@@ -14,6 +14,21 @@ class ScraperController {
           success: false,
           error: 'URL parameter is required'
         });
+      }
+
+      // Decode the URL if it's encoded
+      try {
+        url = decodeURIComponent(url);
+        console.log('Decoded URL:', url);
+      } catch (decodeError) {
+        // If decoding fails, try with decodeURI (less strict)
+        try {
+          url = decodeURI(url);
+          console.log('Decoded URL (less strict):', url);
+        } catch (e) {
+          // If both fail, use original URL
+          console.log('URL decoding failed, using original URL');
+        }
       }
 
       // Basic URL validation
