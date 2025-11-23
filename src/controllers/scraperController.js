@@ -26,13 +26,12 @@ class ScraperController {
         });
       }
 
-      const images = await scraperService.extractProductImages(url);
+      const imageUrl = await scraperService.extractProductImages(url);
 
       res.json({
         success: true,
         url: url,
-        imageCount: images.length,
-        images: images
+        image: imageUrl
       });
 
     } catch (error) {

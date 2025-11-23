@@ -1,10 +1,65 @@
 import puppeteer from 'puppeteer';
+import {
+  extractAmazonImages,
+  extractFlipkartImages,
+  extractMyntraImages,
+  extractSouledStoreImages,
+  extractAjioImages,
+  extractHmImages
+} from './siteExtractors.js';
 
 class ScraperService {
   /**
-   * Extracts product images from an e-commerce URL
+   * Detects the domain from a URL and returns the corresponding extraction function
+   * @param {string} url - The URL to analyze
+   * @returns {Function|null} The extraction function for the domain, or null if not supported
+   */
+  getExtractorForDomain(url) {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      
+      // Remove www. prefix if present
+      const domain = hostname.replace(/^www\./, '');
+      
+      // Domain mapping to extraction functions
+      const domainMap = {
+        'amazon.in': extractAmazonImages,
+        'amazon.com': extractAmazonImages,
+        'amazon.co.uk': extractAmazonImages,
+        'amazon.com.au': extractAmazonImages,
+        'flipkart.com': extractFlipkartImages,
+        'myntra.com': extractMyntraImages,
+        'thesouledstore.com': extractSouledStoreImages,
+        'ajio.com': extractAjioImages,
+        'hm.com': extractHmImages,
+        'hm.co.in': extractHmImages
+      };
+      
+      // Check for exact match first
+      if (domainMap[domain]) {
+        return domainMap[domain];
+      }
+      
+      // Check for partial matches (subdomains)
+      for (const [key, extractor] of Object.entries(domainMap)) {
+        if (domain.includes(key) || domain.endsWith('.' + key)) {
+          return extractor;
+        }
+      }
+      
+      console.log(`No extractor found for domain: ${domain}`);
+      return null;
+    } catch (error) {
+      console.error('Error detecting domain:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Extracts product image from an e-commerce URL
    * @param {string} url - The URL of the e-commerce product page
-   * @returns {Promise<Array<string>>} Array of image URLs
+   * @returns {Promise<string|null>} Single image URL or null if not found
    */
   async extractProductImages(url) {
     let browser = null;
@@ -37,22 +92,55 @@ class ScraperService {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
       });
       
       // Remove webdriver property and other bot detection signals
       await page.evaluateOnNewDocument(() => {
+        // Remove webdriver property
         Object.defineProperty(navigator, 'webdriver', {
           get: () => false,
         });
         
-        // Override plugins and languages
+        // Override plugins
         Object.defineProperty(navigator, 'plugins', {
           get: () => [1, 2, 3, 4, 5],
         });
         
+        // Override languages
         Object.defineProperty(navigator, 'languages', {
           get: () => ['en-US', 'en'],
+        });
+        
+        // Override permissions
+        const originalQuery = window.navigator.permissions.query;
+        window.navigator.permissions.query = (parameters) => (
+          parameters.name === 'notifications' ?
+            Promise.resolve({ state: Notification.permission }) :
+            originalQuery(parameters)
+        );
+        
+        // Override Chrome runtime
+        window.chrome = {
+          runtime: {}
+        };
+        
+        // Mock missing properties
+        Object.defineProperty(navigator, 'platform', {
+          get: () => 'Win32',
+        });
+        
+        Object.defineProperty(navigator, 'hardwareConcurrency', {
+          get: () => 8,
+        });
+        
+        Object.defineProperty(navigator, 'deviceMemory', {
+          get: () => 8,
         });
       });
       
@@ -85,45 +173,25 @@ class ScraperService {
       // Wait for dynamic content using Promise-based delay
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Try to evaluate - handle frame detachment
-      let pageStatus;
-      try {
-        pageStatus = await page.evaluate(() => {
-          const imgCount = document.querySelectorAll('img').length;
-          const hasImages = imgCount > 0;
-          return {
-              loaded: true,
-              title: document.title,
-              imageCount: imgCount,
-              hasImages: hasImages,
-              readyState: document.readyState
-          };
-        });
-      } catch (evalError) {
-        if (evalError.message.includes('detached') || evalError.message.includes('Target closed')) {
-          console.log('Page navigated away, trying to wait for new page...');
-          // Wait a bit more for navigation to complete
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          // Try again after navigation
-          pageStatus = await page.evaluate(() => {
-            const imgCount = document.querySelectorAll('img').length;
-            const hasImages = imgCount > 0;
-            return {
-                loaded: true,
-                title: document.title,
-                imageCount: imgCount,
-                hasImages: hasImages,
-                readyState: document.readyState
-            };
-          });
-        } else {
-          throw evalError;
-        }
+      // Get the appropriate extraction function based on domain
+      const extractor = this.getExtractorForDomain(url);
+      
+      if (!extractor) {
+        throw new Error(`Unsupported domain. No extractor available for: ${url}`);
       }
-    
-      console.log('Page loaded:', pageStatus);
-      return [];
+
+      console.log('Extracting image using site-specific extractor...');
+      
+      // Call the domain-specific extraction function
+      const imageUrl = await extractor(page);
+      
+      if (imageUrl) {
+        console.log(`Extracted image: ${imageUrl}`);
+      } else {
+        console.log('No image found');
+      }
+      
+      return imageUrl;
 
     } catch (error) {
       console.error('Error in scraper:', error.message);
