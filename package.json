@@ -5,13 +5,12 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "build": "NODE_ENV=production node build.js",
-    "build:dev": "NODE_ENV=development node build.js",
-    "build:watch": "NODE_ENV=development node build.js --watch",
+    "build": "rm -rf dist && esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --minify --external:puppeteer --external:express",
+    "build:dev": "rm -rf dist && esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --external:puppeteer --external:express",
+    "build:watch": "esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --watch --external:puppeteer --external:express",
     "start": "node index.js",
     "start:prod": "node dist/index.js",
-    "dev": "nodemon index.js",
-    "prebuild": "rm -rf dist"
+    "dev": "nodemon index.js"
   },
   "keywords": ["scraper", "ecommerce", "images"],
   "author": "",
