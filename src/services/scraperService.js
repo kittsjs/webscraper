@@ -10,13 +10,27 @@ import {
 import fs from 'fs';
 import { execSync } from 'child_process';
 
-function resolveChrome() {
-  const env = process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (env && fs.existsSync(env)) return env;
+function installAndFindChrome() {
+  // if env var exists and is valid, use it
+  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envPath && fs.existsSync(envPath)) return envPath;
+
+  // look for chrome under the runtime installer folder
+  const runtimeBase = '/tmp/puppeteer_chrome';
   try {
-    const out = execSync("find /tmp /opt/render/project/.render /opt/render -maxdepth 6 -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
-    if (out) return out.split('\\n')[0];
+    // if we already installed at runtime, the binary should exist
+    if (fs.existsSync(runtimeBase)) {
+      const out = execSync("find /tmp/puppeteer_chrome -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
+      if (out) return out.split('\\n')[0];
+    }
   } catch (e) {}
+
+  // fallback: attempt quick system find (fast, limited depth)
+  try {
+    const out2 = execSync("find /opt/render/project/.render /opt/render -maxdepth 6 -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
+    if (out2) return out2.split('\\n')[0];
+  } catch (e) {}
+
   return null;
 }
 
@@ -80,8 +94,8 @@ class ScraperService {
     try {
       console.log('Starting to scrape:', url);
 
-      const chromePath = resolveChrome();
-      console.log('chromePath: ', chromePath);
+      const chromePath = installAndFindChrome();
+      console.log('resolved chromePath: ', chromePath);
       if (!chromePath) {
         console.error('Chrome executable not found. Checked common Render paths.');
         // optional: print dirs for debugging
