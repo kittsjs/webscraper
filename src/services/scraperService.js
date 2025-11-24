@@ -7,6 +7,40 @@ import {
   extractAjioImages,
   extractHmImages
 } from './siteExtractors.js';
+import fs from 'fs';
+import path from 'path';
+
+function findChromeExecutable() {
+  const tries = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,                    // user-provided full path (if correct)
+    '/opt/render/project/.render/chrome',                     // Render baked-in path (parent)
+    '/opt/render/.cache/puppeteer/chrome',                    // build-time cache (sometimes present)
+    path.join(process.cwd(), 'node_modules', 'puppeteer', '.local-chromium') // local chromium
+  ].filter(Boolean);
+
+  for (const base of tries) {
+    try {
+      if (fs.existsSync(base)) {
+        const stats = fs.statSync(base);
+        if (stats.isFile()) return base; // already a file path
+        if (stats.isDirectory()) {
+          const entries = fs.readdirSync(base).sort((a,b)=>b.localeCompare(a)); // pick newest
+          for (const e of entries) {
+            const candidate = path.join(base, e, 'chrome');        // linux chrome binary
+            const candidateAlt = path.join(base, e, 'chrome-headless-shell'); // alt name
+            if (fs.existsSync(candidate)) return candidate;
+            if (fs.existsSync(candidateAlt)) return candidateAlt;
+            // also try nested 'chrome-linux/chrome' style
+            const nested = path.join(base, e, 'chrome-linux', 'chrome');
+            if (fs.existsSync(nested)) return nested;
+          }
+        }
+      }
+    } catch (e) { /* ignore and continue */ }
+  }
+  return null;
+}
+
 
 class ScraperService {
   /**
@@ -66,6 +100,14 @@ class ScraperService {
     
     try {
       console.log('Starting to scrape:', url);
+
+      const chromePath = findChromeExecutable();
+      if (!chromePath) {
+        console.error('Chrome executable not found. Checked common Render paths.');
+        // optional: print dirs for debugging
+        try { console.error('ls /opt/render/project/.render ->', fs.readdirSync('/opt/render/project/.render')); } catch(e){}
+        throw new Error('Chrome binary not found');
+      }
       
       // Launch browser with headless mode and stealth settings
       browser = await puppeteer.launch({
