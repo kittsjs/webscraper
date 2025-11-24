@@ -11,7 +11,7 @@
     "start": "node index.js",
     "start:prod": "node dist/index.js",
     "dev": "nodemon index.js",
-    "postinstall": "npx puppeteer@latest install chrome"
+    "postinstall": "PUPPETEER_CACHE_DIR=/opt/render/.cache/puppeteer node node_modules/puppeteer/install.mjs"
   },
   "keywords": ["scraper", "ecommerce", "images"],
   "author": "",
