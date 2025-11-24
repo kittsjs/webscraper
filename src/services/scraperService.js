@@ -8,36 +8,15 @@ import {
   extractHmImages
 } from './siteExtractors.js';
 import fs from 'fs';
-import path from 'path';
+import { execSync } from 'child_process';
 
-function findChromeExecutable() {
-  const tries = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,                    // user-provided full path (if correct)
-    '/opt/render/project/.render/chrome',                     // Render baked-in path (parent)
-    '/opt/render/.cache/puppeteer/chrome',                    // build-time cache (sometimes present)
-    path.join(process.cwd(), 'node_modules', 'puppeteer', '.local-chromium') // local chromium
-  ].filter(Boolean);
-
-  for (const base of tries) {
-    try {
-      if (fs.existsSync(base)) {
-        const stats = fs.statSync(base);
-        if (stats.isFile()) return base; // already a file path
-        if (stats.isDirectory()) {
-          const entries = fs.readdirSync(base).sort((a,b)=>b.localeCompare(a)); // pick newest
-          for (const e of entries) {
-            const candidate = path.join(base, e, 'chrome');        // linux chrome binary
-            const candidateAlt = path.join(base, e, 'chrome-headless-shell'); // alt name
-            if (fs.existsSync(candidate)) return candidate;
-            if (fs.existsSync(candidateAlt)) return candidateAlt;
-            // also try nested 'chrome-linux/chrome' style
-            const nested = path.join(base, e, 'chrome-linux', 'chrome');
-            if (fs.existsSync(nested)) return nested;
-          }
-        }
-      }
-    } catch (e) { /* ignore and continue */ }
-  }
+function resolveChrome() {
+  const env = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (env && fs.existsSync(env)) return env;
+  try {
+    const out = execSync("find /tmp /opt/render/project/.render /opt/render -maxdepth 6 -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
+    if (out) return out.split('\\n')[0];
+  } catch (e) {}
   return null;
 }
 
@@ -101,7 +80,7 @@ class ScraperService {
     try {
       console.log('Starting to scrape:', url);
 
-      const chromePath = findChromeExecutable();
+      const chromePath = resolveChrome();
       console.log('chromePath: ', chromePath);
       if (!chromePath) {
         console.error('Chrome executable not found. Checked common Render paths.');
@@ -113,7 +92,7 @@ class ScraperService {
       // Launch browser with headless mode and stealth settings
       browser = await puppeteer.launch({
         headless: 'new',
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+        executablePath: chromePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
