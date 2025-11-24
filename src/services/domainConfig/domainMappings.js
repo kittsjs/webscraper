@@ -36,7 +36,8 @@ export const API_ONLY_DOMAINS = [
   'houseofchikankari.in',
   'offduty.in',
   'freakins.com',
-  'wforwomen.com'
+  'wforwomen.com',
+  'wforwoman.com'
 ];
 
 /**
@@ -62,6 +63,7 @@ export const DOMAIN_EXTRACTOR_MAP = {
   'libas.in': extractLibasImages,
   'bewakoof.com': extractBewakoofImages,
   'wforwomen.com': extractWforwomenImages,
+  'wforwoman.com': extractWforwomenImages,
   'shoppersstop.com': extractShoppersstopImages,
   'veromoda.in': extractVeromodaImages
 };
