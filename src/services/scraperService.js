@@ -1,86 +1,58 @@
 import puppeteer from 'puppeteer';
 import {
-  extractAmazonImages,
-  extractFlipkartImages,
-  extractMyntraImages,
-  extractSouledStoreImages,
-  extractAjioImages,
-  extractHmImages
-} from './siteExtractors.js';
-import fs from 'fs';
-import { execSync } from 'child_process';
-
-function installAndFindChrome() {
-  // if env var exists and is valid, use it
-  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-
-  // look for chrome under the runtime installer folder
-  const runtimeBase = '/tmp/puppeteer_chrome';
-  try {
-    // if we already installed at runtime, the binary should exist
-    if (fs.existsSync(runtimeBase)) {
-      const out = execSync("find /tmp/puppeteer_chrome -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
-      if (out) return out.split('\\n')[0];
-    }
-  } catch (e) {}
-
-  // fallback: attempt quick system find (fast, limited depth)
-  try {
-    const out2 = execSync("find /opt/render/project/.render /opt/render -maxdepth 6 -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
-    if (out2) return out2.split('\\n')[0];
-  } catch (e) {}
-
-  return null;
-}
-
+  isApiOnlyDomainName,
+  getExtractorForDomainName
+} from './domainConfig/domainMappings.js';
 
 class ScraperService {
+  /**
+   * Normalizes domain from URL by removing www. prefix
+   * @param {string} url - The URL to analyze
+   * @returns {string|null} Normalized domain name or null if invalid
+   */
+  normalizeDomain(url) {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      return hostname.replace(/^www\./, '');
+    } catch (error) {
+      console.error('Error normalizing domain:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Checks if a domain uses API-only extraction (no Puppeteer needed)
+   * @param {string} url - The URL to analyze
+   * @returns {boolean} True if domain uses API-only extraction
+   */
+  isApiOnlyDomain(url) {
+    const domain = this.normalizeDomain(url);
+    if (!domain) {
+      return false;
+    }
+    return isApiOnlyDomainName(domain);
+  }
+
   /**
    * Detects the domain from a URL and returns the corresponding extraction function
    * @param {string} url - The URL to analyze
    * @returns {Function|null} The extraction function for the domain, or null if not supported
    */
   getExtractorForDomain(url) {
-    try {
-      const urlObj = new URL(url);
-      const hostname = urlObj.hostname.toLowerCase();
-      
-      // Remove www. prefix if present
-      const domain = hostname.replace(/^www\./, '');
-      
-      // Domain mapping to extraction functions
-      const domainMap = {
-        'amazon.in': extractAmazonImages,
-        'amazon.com': extractAmazonImages,
-        'amazon.co.uk': extractAmazonImages,
-        'amazon.com.au': extractAmazonImages,
-        'flipkart.com': extractFlipkartImages,
-        'myntra.com': extractMyntraImages,
-        'thesouledstore.com': extractSouledStoreImages,
-        'ajio.com': extractAjioImages,
-        'hm.com': extractHmImages,
-        'hm.co.in': extractHmImages
-      };
-      
-      // Check for exact match first
-      if (domainMap[domain]) {
-        return domainMap[domain];
-      }
-      
-      // Check for partial matches (subdomains)
-      for (const [key, extractor] of Object.entries(domainMap)) {
-        if (domain.includes(key) || domain.endsWith('.' + key)) {
-          return extractor;
-        }
-      }
-      
-      console.log(`No extractor found for domain: ${domain}`);
-      return null;
-    } catch (error) {
-      console.error('Error detecting domain:', error.message);
+    const domain = this.normalizeDomain(url);
+    if (!domain) {
+      console.log('Invalid URL format');
       return null;
     }
+    
+    const extractor = getExtractorForDomainName(domain);
+    
+    if (!extractor) {
+      console.log(`No extractor found for domain: ${domain}`);
+    }
+    
+    return extractor;
   }
 
   /**
@@ -89,24 +61,64 @@ class ScraperService {
    * @returns {Promise<string|null>} Single image URL or null if not found
    */
   async extractProductImages(url) {
+    try {
+      console.log('Starting to extract image from:', url);
+      
+      // Get the appropriate extraction function based on domain
+      const extractor = this.getExtractorForDomain(url);
+      
+      if (!extractor) {
+        throw new Error(`Unsupported domain. No extractor available for: ${url}`);
+      }
+
+      // Check if this is an API-only domain (no Puppeteer needed)
+      if (this.isApiOnlyDomain(url)) {
+        console.log('Using API-only extraction (skipping Puppeteer)...');
+        
+        // For API-only domains, pass null as page since it won't be used
+        const imageUrl = await extractor(null, url);
+        
+        if (imageUrl) {
+          console.log(`Extracted image: ${imageUrl}`);
+        } else {
+          console.log('No image found');
+        }
+        
+        return imageUrl;
+      }
+
+      // For scraping-based domains, use Puppeteer
+      return await this.extractWithPuppeteer(url, extractor);
+
+    } catch (error) {
+      console.error('Error in scraper:', error.message);
+      console.error('Error stack:', error.stack);
+      
+      // Provide more helpful error messages
+      if (error.message.includes('socket') || error.message.includes('hang up')) {
+        throw new Error(`Connection was closed by the server. This often happens with sites that have bot detection (like Myntra, Flipkart, Amazon). Error: ${error.message}`);
+      }
+      
+      throw new Error(`Failed to extract images: ${error.message}`);
+    }
+  }
+
+  /**
+   * Extracts product image using Puppeteer (for scraping-based domains)
+   * @param {string} url - The URL of the e-commerce product page
+   * @param {Function} extractor - The extraction function to use
+   * @returns {Promise<string|null>} Single image URL or null if not found
+   */
+  async extractWithPuppeteer(url, extractor) {
     let browser = null;
     
     try {
-      console.log('Starting to scrape:', url);
-
-      const chromePath = installAndFindChrome();
-      console.log('resolved chromePath: ', chromePath);
-      if (!chromePath) {
-        console.error('Chrome executable not found. Checked common Render paths.');
-        // optional: print dirs for debugging
-        try { console.error('ls /opt/render/project/.render ->', fs.readdirSync('/opt/render/project/.render')); } catch(e){}
-        throw new Error('Chrome binary not found');
-      }
+      console.log('Using Puppeteer for extraction...');
       
       // Launch browser with headless mode and stealth settings
       browser = await puppeteer.launch({
         headless: 'new',
-        executablePath: chromePath,
+        executablePath: puppeteer.executablePath(),
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -210,17 +222,11 @@ class ScraperService {
       // Wait for dynamic content using Promise-based delay
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Get the appropriate extraction function based on domain
-      const extractor = this.getExtractorForDomain(url);
-      
-      if (!extractor) {
-        throw new Error(`Unsupported domain. No extractor available for: ${url}`);
-      }
-
       console.log('Extracting image using site-specific extractor...');
       
       // Call the domain-specific extraction function
-      const imageUrl = await extractor(page);
+      // Pass both page and url - extractors can use either or both
+      const imageUrl = await extractor(page, url);
       
       if (imageUrl) {
         console.log(`Extracted image: ${imageUrl}`);
@@ -230,16 +236,6 @@ class ScraperService {
       
       return imageUrl;
 
-    } catch (error) {
-      console.error('Error in scraper:', error.message);
-      console.error('Error stack:', error.stack);
-      
-      // Provide more helpful error messages
-      if (error.message.includes('socket') || error.message.includes('hang up')) {
-        throw new Error(`Connection was closed by the server. This often happens with sites that have bot detection (like Myntra, Flipkart, Amazon). Error: ${error.message}`);
-      }
-      
-      throw new Error(`Failed to extract images: ${error.message}`);
     } finally {
       if (browser) {
         await browser.close();
