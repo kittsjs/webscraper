@@ -4,6 +4,7 @@ import {
   getExtractorForDomainName
 } from './domainConfig/domainMappings.js';
 import { execSync } from 'child_process';
+import fs from 'fs';
 
 function installAndFindChrome() {
   // if env var exists and is valid, use it
