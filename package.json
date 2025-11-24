@@ -9,7 +9,7 @@
     "build:dev": "rm -rf dist && esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --external:puppeteer --external:express",
     "build:watch": "esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --watch --external:puppeteer --external:express",
     "start": "node index.js",
-    "start:prod": "node dist/index.js",
+    "start:prod": "PUPPETEER_CACHE_DIR=/tmp/puppeteer_chrome node node_modules/puppeteer/install.mjs && node dist/index.js",
     "dev": "nodemon index.js",
     "postinstall": "PUPPETEER_CACHE_DIR=/opt/render/.cache/puppeteer node node_modules/puppeteer/install.mjs"
   },
