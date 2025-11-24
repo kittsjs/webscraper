@@ -102,6 +102,7 @@ class ScraperService {
       console.log('Starting to scrape:', url);
 
       const chromePath = findChromeExecutable();
+      console.log('chromePath: ', chromePath);
       if (!chromePath) {
         console.error('Chrome executable not found. Checked common Render paths.');
         // optional: print dirs for debugging
