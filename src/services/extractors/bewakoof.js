@@ -125,6 +125,43 @@ function extractProductImage(apiResponse) {
 }
 
 /**
+ * Extracts product gallery images from API response
+ * @param {Object} apiResponse - API response object
+ * @returns {Array<string>} Array of image URLs
+ */
+function extractBewakoofGalleryImages(apiResponse) {
+  try {
+    if (!apiResponse || 
+        !apiResponse.pageProps || 
+        !apiResponse.pageProps.productDetails || 
+        !apiResponse.pageProps.productDetails.images || 
+        !apiResponse.pageProps.productDetails.images.additional) {
+      return [];
+    }
+
+    const additional = apiResponse.pageProps.productDetails.images.additional;
+    
+    if (!Array.isArray(additional)) {
+      return [];
+    }
+
+    const imageList = additional
+      .map(item => {
+        if (item && item.name && typeof item.name === 'string') {
+          return `https://images.bewakoof.com/original/${item.name}`;
+        }
+        return null;
+      })
+      .filter(url => url !== null);
+
+    return imageList;
+  } catch (error) {
+    console.error('Error extracting Bewakoof gallery images from API response:', error.message);
+    return [];
+  }
+}
+
+/**
  * Extracts product image from Bewakoof
  * @param {object} page - Puppeteer page object
  * @param {string} url - Bewakoof product page URL
@@ -159,16 +196,28 @@ export async function extractBewakoofImages(page, url) {
     const apiResponse = await fetchProductData(apiUrl);
     
     if (!apiResponse) {
-      return null;
+      return {
+        image: null,
+        imageList: []
+      };
     }
     
     // Extract image from response
     const imageUrl = extractProductImage(apiResponse);
     
-    return imageUrl;
+    // Extract gallery images from response
+    const imageList = extractBewakoofGalleryImages(apiResponse);
+    
+    return {
+      image: imageUrl,
+      imageList
+    };
   } catch (error) {
     console.error('Error extracting Bewakoof image:', error.message);
-    return null;
+    return {
+      image: null,
+      imageList: []
+    };
   }
 }
 

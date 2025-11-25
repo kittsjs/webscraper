@@ -84,23 +84,60 @@ class SaadaaApiService {
   }
 
   /**
+   * Extracts product gallery images from API response
+   * Extracts src property from each object in product.images array
+   * @param {Object} apiResponse - API response object
+   * @returns {Array<string>} Array of image URLs
+   */
+  extractSaadaaGalleryImages(apiResponse) {
+    try {
+      if (!apiResponse || 
+          !apiResponse.product || 
+          !apiResponse.product.images || 
+          !Array.isArray(apiResponse.product.images)) {
+        return [];
+      }
+
+      const imageList = apiResponse.product.images
+        .map(imageObj => imageObj && imageObj.src)
+        .filter(src => src && typeof src === 'string');
+
+      return imageList;
+    } catch (error) {
+      console.error('Error extracting Saadaa gallery images from API response:', error.message);
+      return [];
+    }
+  }
+
+  /**
    * Gets product image from Saadaa product page URL
    * @param {string} url - Product page URL
-   * @returns {Promise<string|null>} Product image URL or null if not found
+   * @returns {Promise<Object>} Object with image and imageList properties
    */
   async getProductImage(url) {
     try {
       const apiResponse = await this.fetchProduct(url);
       
       if (!apiResponse) {
-        return null;
+        return {
+          image: null,
+          imageList: []
+        };
       }
 
       const imageUrl = this.extractProductImage(apiResponse);
-      return imageUrl;
+      const imageList = this.extractSaadaaGalleryImages(apiResponse);
+
+      return {
+        image: imageUrl,
+        imageList
+      };
     } catch (error) {
       console.error('Error getting product image:', error.message);
-      return null;
+      return {
+        image: null,
+        imageList: []
+      };
     }
   }
 }

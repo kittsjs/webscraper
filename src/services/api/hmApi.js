@@ -121,9 +121,42 @@ class HmApiService {
   }
 
   /**
+   * Extracts product gallery images from API response
+   * Extracts images from articles.productList[0].images array
+   * @param {Object} apiResponse - API response object
+   * @returns {Array<string>} Array of image URLs
+   */
+  extractHmGalleryImages(apiResponse) {
+    try {
+      if (!apiResponse || 
+          !apiResponse.articles || 
+          !apiResponse.articles.productList || 
+          !Array.isArray(apiResponse.articles.productList) ||
+          apiResponse.articles.productList.length === 0) {
+        return [];
+      }
+
+      const product = apiResponse.articles.productList[0];
+      
+      if (!product.images || !Array.isArray(product.images)) {
+        return [];
+      }
+
+      const imageList = product.images
+        .map(imageObj => imageObj && imageObj.url)
+        .filter(url => url && typeof url === 'string');
+
+      return imageList;
+    } catch (error) {
+      console.error('Error extracting H&M gallery images from API response:', error.message);
+      return [];
+    }
+  }
+
+  /**
    * Gets product image from H&M product page URL
    * @param {string} url - H&M product page URL
-   * @returns {Promise<string|null>} Product image URL or null if not found
+   * @returns {Promise<Object>} Object with image and imageList properties
    */
   async getProductImage(url) {
     try {
@@ -131,7 +164,10 @@ class HmApiService {
       
       if (!productId) {
         console.error('Could not extract product ID from URL:', url);
-        return null;
+        return {
+          image: null,
+          imageList: []
+        };
       }
 
       const locale = this.extractLocale(url);
@@ -140,14 +176,25 @@ class HmApiService {
       const apiResponse = await this.fetchProductById(productId, locale);
       
       if (!apiResponse) {
-        return null;
+        return {
+          image: null,
+          imageList: []
+        };
       }
 
       const imageUrl = this.extractProductImage(apiResponse);
-      return imageUrl;
+      const imageList = this.extractHmGalleryImages(apiResponse);
+
+      return {
+        image: imageUrl,
+        imageList
+      };
     } catch (error) {
       console.error('Error getting product image:', error.message);
-      return null;
+      return {
+        image: null,
+        imageList: []
+      };
     }
   }
 }

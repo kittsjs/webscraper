@@ -41,12 +41,13 @@ class ScraperController {
         });
       }
 
-      const imageUrl = await scraperService.extractProductImages(url);
+      const { image: imageUrl, imageList = [] } = await scraperService.extractProductImages(url);
 
       res.json({
         success: true,
         url: url,
-        image: imageUrl
+        image: imageUrl,
+        imageList
       });
 
     } catch (error) {

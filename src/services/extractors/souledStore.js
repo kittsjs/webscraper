@@ -44,10 +44,58 @@ export async function extractSouledStoreImages(page) {
       return null;
     });
 
-    return imageUrl;
+    const imageList = await extractSouledStoreGalleryImages(page);
+
+    return {
+      image: imageUrl,
+      imageList
+    };
   } catch (error) {
     console.error('Error extracting Souled Store image:', error.message);
     return null;
+  }
+}
+
+/**
+ * Extracts all images nested under the mdproduct container
+ * @param {object} page - Puppeteer page object
+ * @returns {Promise<string[]>} List of image URLs
+ */
+async function extractSouledStoreGalleryImages(page) {
+  try {
+    return await page.evaluate(() => {
+      const mdProduct = document.querySelector('.mdproduct');
+      if (!mdProduct) {
+        return [];
+      }
+
+      const getRawSrc = (img) => (
+        img.src ||
+        img.getAttribute('data-src') ||
+        img.getAttribute('data-lazy-src') ||
+        img.getAttribute('data-original') ||
+        img.getAttribute('data-url')
+      );
+
+      return Array.from(mdProduct.querySelectorAll('img'))
+        .map(img => getRawSrc(img))
+        .filter(Boolean)
+        .map(src => {
+          if (!src.startsWith('http')) {
+            if (src.startsWith('//')) {
+              return 'https:' + src;
+            }
+            if (src.startsWith('/')) {
+              return window.location.origin + src;
+            }
+            return window.location.origin + '/' + src;
+          }
+          return src;
+        });
+    });
+  } catch (error) {
+    console.error('Error extracting Souled Store gallery images:', error.message);
+    return [];
   }
 }
 

@@ -41,10 +41,73 @@ export async function extractShoppersstopImages(page) {
       return null;
     });
 
-    return imageUrl;
+    const imageList = await extractShoppersstopGalleryImages(page);
+
+    return {
+      image: imageUrl,
+      imageList
+    };
   } catch (error) {
     console.error('Error extracting Shoppers Stop image:', error.message);
-    return null;
+    return {
+      image: null,
+      imageList: []
+    };
+  }
+}
+
+/**
+ * Extracts all product images from Shoppers Stop image cards
+ * @param {object} page - Puppeteer page object
+ * @returns {Promise<Array<string>>} Array of image URLs
+ */
+async function extractShoppersstopGalleryImages(page) {
+  try {
+    return await page.evaluate(() => {
+      const imageCards = document.querySelectorAll('[data-testid="pdp-image-card"]');
+      
+      if (!imageCards || imageCards.length === 0) {
+        return [];
+      }
+
+      const imageList = [];
+      
+      imageCards.forEach(card => {
+        const img = card.querySelector('img');
+        
+        if (img) {
+          const getRawSrc = (img) => (
+            img.src ||
+            img.getAttribute('data-src') ||
+            img.getAttribute('data-lazy-src') ||
+            img.getAttribute('data-original') ||
+            img.getAttribute('data-url')
+          );
+
+          let src = getRawSrc(img);
+
+          // Handle relative URLs by converting to absolute
+          if (src && !src.startsWith('http')) {
+            if (src.startsWith('//')) {
+              src = 'https:' + src;
+            } else if (src.startsWith('/')) {
+              src = window.location.origin + src;
+            } else {
+              src = window.location.origin + '/' + src;
+            }
+          }
+
+          if (src && src.startsWith('http')) {
+            imageList.push(src);
+          }
+        }
+      });
+
+      return imageList;
+    });
+  } catch (error) {
+    console.error('Error extracting Shoppers Stop gallery images:', error.message);
+    return [];
   }
 }
 

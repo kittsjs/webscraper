@@ -7,20 +7,23 @@
  * Extracts product image from Offduty
  * @param {object} page - Puppeteer page object (not used for API approach)
  * @param {string} url - Offduty product page URL
- * @returns {Promise<string|null>} Single image URL or null if not found
+ * @returns {Promise<Object>} Object with image and imageList properties
  */
 export async function extractOffdutyImages(page, url) {
   try {
     // Import Offduty API service dynamically to avoid circular dependencies
     const { default: offdutyApiService } = await import('../api/offdutyApi.js');
     
-    // Get product image from Offduty API
-    const imageUrl = await offdutyApiService.getProductImage(url);
+    // Get product image and imageList from Offduty API
+    const result = await offdutyApiService.getProductImage(url);
     
-    return imageUrl;
+    return result;
   } catch (error) {
     console.error('Error extracting Offduty image:', error.message);
-    return null;
+    return {
+      image: null,
+      imageList: []
+    };
   }
 }
 

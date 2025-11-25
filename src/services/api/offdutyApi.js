@@ -97,23 +97,76 @@ class OffdutyApiService {
   }
 
   /**
+   * Extracts product gallery images from API response
+   * Prefixes 'https:' to each image URL in the images array
+   * @param {Object} apiResponse - API response object
+   * @returns {Array<string>} Array of image URLs with https: prefix
+   */
+  extractOffdutyGalleryImages(apiResponse) {
+    try {
+      if (!apiResponse || !apiResponse.images || !Array.isArray(apiResponse.images)) {
+        return [];
+      }
+
+      const imageList = apiResponse.images
+        .map(imageItem => {
+          if (!imageItem) {
+            return null;
+          }
+          // If imageItem is a string, use it directly; if it's an object, try to get a URL property
+          const imageUrl = typeof imageItem === 'string' ? imageItem : (imageItem.url || imageItem.src || imageItem);
+          
+          if (!imageUrl || typeof imageUrl !== 'string') {
+            return null;
+          }
+          
+          // Prefix 'https:' if not already present
+          if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+            return imageUrl;
+          } else if (imageUrl.startsWith('//')) {
+            return 'https:' + imageUrl;
+          } else {
+            return 'https:' + (imageUrl.startsWith('/') ? '' : '//') + imageUrl;
+          }
+        })
+        .filter(url => url !== null);
+
+      return imageList;
+    } catch (error) {
+      console.error('Error extracting Offduty gallery images from API response:', error.message);
+      return [];
+    }
+  }
+
+  /**
    * Gets product image from Offduty product page URL
    * @param {string} url - Product page URL
-   * @returns {Promise<string|null>} Product image URL or null if not found
+   * @returns {Promise<Object>} Object with image and imageList properties
    */
   async getProductImage(url) {
     try {
       const apiResponse = await this.fetchProduct(url);
       
       if (!apiResponse) {
-        return null;
+        return {
+          image: null,
+          imageList: []
+        };
       }
 
       const imageUrl = this.extractProductImage(apiResponse);
-      return imageUrl;
+      const imageList = this.extractOffdutyGalleryImages(apiResponse);
+
+      return {
+        image: imageUrl,
+        imageList
+      };
     } catch (error) {
       console.error('Error getting product image:', error.message);
-      return null;
+      return {
+        image: null,
+        imageList: []
+      };
     }
   }
 }

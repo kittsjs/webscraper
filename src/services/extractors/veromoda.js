@@ -42,10 +42,73 @@ export async function extractVeromodaImages(page) {
       return null;
     });
 
-    return imageUrl;
+    const imageList = await extractVeromodaGalleryImages(page);
+
+    return {
+      image: imageUrl,
+      imageList
+    };
   } catch (error) {
     console.error('Error extracting Veromoda image:', error.message);
-    return null;
+    return {
+      image: null,
+      imageList: []
+    };
+  }
+}
+
+/**
+ * Extracts all product images from Veromoda product gallery thumbnails
+ * @param {object} page - Puppeteer page object
+ * @returns {Promise<Array<string>>} Array of image URLs
+ */
+async function extractVeromodaGalleryImages(page) {
+  try {
+    return await page.evaluate(() => {
+      const thumbnails = document.querySelectorAll('.product-gallery__thumbnail');
+      
+      if (!thumbnails || thumbnails.length === 0) {
+        return [];
+      }
+
+      const imageList = [];
+      
+      thumbnails.forEach(thumbnail => {
+        const img = thumbnail.querySelector('img');
+        
+        if (img) {
+          const getRawSrc = (img) => (
+            img.src ||
+            img.getAttribute('data-src') ||
+            img.getAttribute('data-lazy-src') ||
+            img.getAttribute('data-original') ||
+            img.getAttribute('data-url')
+          );
+
+          let src = getRawSrc(img);
+
+          // Handle relative URLs by converting to absolute
+          if (src && !src.startsWith('http')) {
+            if (src.startsWith('//')) {
+              src = 'https:' + src;
+            } else if (src.startsWith('/')) {
+              src = window.location.origin + src;
+            } else {
+              src = window.location.origin + '/' + src;
+            }
+          }
+
+          if (src && src.startsWith('http')) {
+            imageList.push(src);
+          }
+        }
+      });
+
+      return imageList;
+    });
+  } catch (error) {
+    console.error('Error extracting Veromoda gallery images:', error.message);
+    return [];
   }
 }
 

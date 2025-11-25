@@ -98,9 +98,33 @@ class AjioApiService {
   }
 
   /**
+   * Extracts product gallery images from API response
+   * Filters images where format === 'cartIcon' and extracts their URLs
+   * @param {Object} apiResponse - API response object
+   * @returns {Array<string>} Array of image URLs
+   */
+  extractAjioGalleryImages(apiResponse) {
+    try {
+      if (!apiResponse || !apiResponse.images || !Array.isArray(apiResponse.images)) {
+        return [];
+      }
+
+      const imageList = apiResponse.images
+        .filter(imageObj => imageObj && imageObj.format === 'cartIcon')
+        .map(imageObj => imageObj.url)
+        .filter(url => url && typeof url === 'string');
+
+      return imageList;
+    } catch (error) {
+      console.error('Error extracting Ajio gallery images from API response:', error.message);
+      return [];
+    }
+  }
+
+  /**
    * Gets product image from Ajio product page URL
    * @param {string} url - Ajio product page URL
-   * @returns {Promise<string|null>} Product image URL or null if not found
+   * @returns {Promise<Object>} Object with image and imageList properties
    */
   async getProductImage(url) {
     try {
@@ -108,7 +132,10 @@ class AjioApiService {
       
       if (!productId) {
         console.error('Could not extract product ID from URL:', url);
-        return null;
+        return {
+          image: null,
+          imageList: []
+        };
       }
 
       console.log(`Extracted product ID: ${productId}`);
@@ -116,14 +143,25 @@ class AjioApiService {
       const apiResponse = await this.fetchProductById(productId);
       
       if (!apiResponse) {
-        return null;
+        return {
+          image: null,
+          imageList: []
+        };
       }
 
       const imageUrl = this.extractProductImage(apiResponse);
-      return imageUrl;
+      const imageList = this.extractAjioGalleryImages(apiResponse);
+
+      return {
+        image: imageUrl,
+        imageList
+      };
     } catch (error) {
       console.error('Error getting product image:', error.message);
-      return null;
+      return {
+        image: null,
+        imageList: []
+      };
     }
   }
 }

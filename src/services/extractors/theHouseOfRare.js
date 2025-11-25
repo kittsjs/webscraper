@@ -7,20 +7,23 @@
  * Extracts product image from The House of Rare
  * @param {object} page - Puppeteer page object (not used for API approach)
  * @param {string} url - The House of Rare product page URL
- * @returns {Promise<string|null>} Single image URL or null if not found
+ * @returns {Promise<Object>} Object with image and imageList properties
  */
 export async function extractTheHouseOfRareImages(page, url) {
   try {
     // Import The House of Rare API service dynamically to avoid circular dependencies
     const { default: theHouseOfRareApiService } = await import('../api/theHouseOfRareApi.js');
     
-    // Get product image from The House of Rare API
-    const imageUrl = await theHouseOfRareApiService.getProductImage(url);
+    // Get product image and imageList from The House of Rare API
+    const result = await theHouseOfRareApiService.getProductImage(url);
     
-    return imageUrl;
+    return result;
   } catch (error) {
     console.error('Error extracting The House of Rare image:', error.message);
-    return null;
+    return {
+      image: null,
+      imageList: []
+    };
   }
 }
 
