@@ -3,6 +3,34 @@ import {
   isApiOnlyDomainName,
   getExtractorForDomainName
 } from './domainConfig/domainMappings.js';
+import { execSync } from 'child_process';
+import fs from 'fs';
+
+function installAndFindChrome() {
+  // if env var exists and is valid, use it
+  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envPath && fs.existsSync(envPath)) return envPath;
+
+  // look for chrome under the runtime installer folder
+  const runtimeBase = '/tmp/puppeteer_chrome';
+  try {
+    // if we already installed at runtime, the binary should exist
+    if (fs.existsSync(runtimeBase)) {
+      const out = execSync("find /tmp/puppeteer_chrome -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
+      if (out) return out.split('\\n')[0];
+
+
+    }
+  } catch (e) {}
+
+  // fallback: attempt quick system find (fast, limited depth)
+  try {
+    const out2 = execSync("find /opt/render/project/.render /opt/render -maxdepth 6 -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
+    if (out2) return out2.split('\\n')[0];
+  } catch (e) {}
+
+  return null;
+}
 
 class ScraperService {
   /**
@@ -56,9 +84,9 @@ class ScraperService {
   }
 
   /**
-   * Extracts product images from an e-commerce URL
+   * Extracts product image from an e-commerce URL
    * @param {string} url - The URL of the e-commerce product page
-   * @returns {Promise<{image: string|null, imageList: string[]}>}
+   * @returns {Promise<string|null>} Single image URL or null if not found
    */
   async extractProductImages(url) {
     try {
@@ -76,16 +104,15 @@ class ScraperService {
         console.log('Using API-only extraction (skipping Puppeteer)...');
         
         // For API-only domains, pass null as page since it won't be used
-        const imageData = await extractor(null, url);
-        const payload = this.formatImageResult(imageData);
+        const imageUrl = await extractor(null, url);
         
-        if (payload.image) {
-          console.log(`Extracted image: ${payload.image}`);
+        if (imageUrl) {
+          console.log(`Extracted image: ${imageUrl}`);
         } else {
           console.log('No image found');
         }
         
-        return payload;
+        return imageUrl;
       }
 
       // For scraping-based domains, use Puppeteer
@@ -108,18 +135,25 @@ class ScraperService {
    * Extracts product image using Puppeteer (for scraping-based domains)
    * @param {string} url - The URL of the e-commerce product page
    * @param {Function} extractor - The extraction function to use
-   * @returns {Promise<{image: string|null, imageList: string[]}>}
+   * @returns {Promise<string|null>} Single image URL or null if not found
    */
   async extractWithPuppeteer(url, extractor) {
     let browser = null;
     
     try {
       console.log('Using Puppeteer for extraction...');
-      
+      const chromePath = installAndFindChrome();
+      console.log('resolved chromePath: ', chromePath);
+      if (!chromePath) {
+        console.error('Chrome executable not found. Checked common Render paths.');
+        // optional: print dirs for debugging
+        try { console.error('ls /opt/render/project/.render ->', fs.readdirSync('/opt/render/project/.render')); } catch(e){}
+        throw new Error('Chrome binary not found');
+      }
       // Launch browser with headless mode and stealth settings
       browser = await puppeteer.launch({
         headless: 'new',
-        executablePath: puppeteer.executablePath(),
+        executablePath: chromePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -227,16 +261,15 @@ class ScraperService {
       
       // Call the domain-specific extraction function
       // Pass both page and url - extractors can use either or both
-      const imageData = await extractor(page, url);
-      const payload = this.formatImageResult(imageData);
+      const imageUrl = await extractor(page, url);
       
-      if (payload.image) {
-        console.log(`Extracted image: ${payload.image}`);
+      if (imageUrl) {
+        console.log(`Extracted image: ${imageUrl}`);
       } else {
         console.log('No image found');
       }
       
-      return payload;
+      return imageUrl;
 
     } finally {
       if (browser) {
@@ -245,30 +278,5 @@ class ScraperService {
     }
   }
 }
-
-/**
- * Normalizes varying extractor responses into unified shape
- */
-ScraperService.prototype.formatImageResult = function(imageData) {
-  if (!imageData) {
-    return { image: null, imageList: [] };
-  }
-
-  if (typeof imageData === 'string') {
-    return { image: imageData, imageList: [] };
-  }
-
-  const imageList = Array.isArray(imageData.imageList) ? imageData.imageList : [];
-  let image = imageData.image ?? null;
-
-  if (!image && imageList.length > 0) {
-    image = imageList[0];
-  }
-
-  return {
-    image,
-    imageList
-  };
-};
 
 export default new ScraperService();
