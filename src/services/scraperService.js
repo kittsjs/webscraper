@@ -253,17 +253,6 @@ class ScraperService {
       // Set a reasonable viewport size
       await page.setViewport({ width: 1920, height: 1080 });
 
-      // Speed optimizations: block non-essential resources (fonts, media) to reduce load time
-      await page.setRequestInterception(true);
-      page.on('request', (request) => {
-        const resourceType = request.resourceType();
-        // We need document, script, xhr/fetch, stylesheet for layout; images are optional since we usually just read src/background-image
-        if (['media', 'font'].includes(resourceType)) {
-          return request.abort();
-        }
-        return request.continue();
-      });
-
       // Tighter navigation timeout
       page.setDefaultNavigationTimeout(30000);
       
