@@ -55,27 +55,35 @@ class ScraperService {
       try { console.error('ls /opt/render/project/.render ->', fs.readdirSync('/opt/render/project/.render')); } catch(e){}
       throw new Error('Chrome binary not found');
     }
-    if (!this.browserPromise) {
-      console.log('Launching shared Puppeteer browser instance...');
-      this.browserPromise = puppeteer.launch({
-        headless: 'new',
-        // Use the Chrome binary we resolved above instead of Puppeteer's bundled one.
-        executablePath: chromePath,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-dev-shm-usage',
-          '--disable-web-security',
-          '--disable-features=IsolateOrigins,site-per-process'
-        ],
-        ignoreHTTPSErrors: true
-      }).catch(err => {
-        // If launch fails, reset so we can retry next time
-        this.browserPromise = null;
-        throw err;
-      });
+    // If we already have a browserPromise, verify the underlying browser is still connected.
+    if (this.browserPromise) {
+      const existingBrowser = await this.browserPromise.catch(() => null);
+      if (existingBrowser && typeof existingBrowser.isConnected === 'function' && existingBrowser.isConnected()) {
+        return existingBrowser;
+      }
+      // Browser is closed/disconnected or failed previously - reset so we can relaunch.
+      this.browserPromise = null;
     }
+
+    console.log('Launching shared Puppeteer browser instance...');
+    this.browserPromise = puppeteer.launch({
+      headless: 'new',
+      // Use the Chrome binary we resolved above instead of Puppeteer's bundled one.
+      executablePath: chromePath,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
+      ],
+      ignoreHTTPSErrors: true
+    }).catch(err => {
+      // If launch fails, reset so we can retry next time
+      this.browserPromise = null;
+      throw err;
+    });
 
     return this.browserPromise;
   }
@@ -279,10 +287,10 @@ class ScraperService {
       }
       
       console.log('Page loaded, waiting briefly for dynamic content...');
-
+      
       // Short wait for dynamic content; most sites render primary gallery quickly
       await new Promise(resolve => setTimeout(resolve, 1000));
-
+      
       console.log('Extracting image using site-specific extractor...');
       
       // Call the domain-specific extraction function
@@ -301,6 +309,15 @@ class ScraperService {
     } catch (error) {
       console.error('Puppeteer extraction error:', error.message);
       throw error;
+    } finally {
+      // Always close the page so each request cleans up its resources.
+      try {
+        if (page && !page.isClosed()) {
+          await page.close();
+        }
+      } catch (closeErr) {
+        console.error('Error while closing Puppeteer page:', closeErr.message || closeErr);
+      }
     }
   }
 }
