@@ -5,9 +5,9 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "build": "rm -rf dist && esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --minify --external:puppeteer --external:express",
-    "build:dev": "rm -rf dist && esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --external:puppeteer --external:express",
-    "build:watch": "esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --watch --external:puppeteer --external:express",
+    "build": "rm -rf dist && esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --minify --external:puppeteer --external:puppeteer-extra --external:puppeteer-extra-plugin-stealth --external:express",
+    "build:dev": "rm -rf dist && esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --external:puppeteer --external:puppeteer-extra --external:puppeteer-extra-plugin-stealth --external:express",
+    "build:watch": "esbuild index.js --bundle --platform=node --target=node18 --format=esm --outdir=dist --sourcemap --watch --external:puppeteer --external:puppeteer-extra --external:puppeteer-extra-plugin-stealth --external:express",
     "start": "node index.js",
     "start:prod": "PUPPETEER_CACHE_DIR=/tmp/puppeteer_chrome node node_modules/puppeteer/install.mjs && node dist/index.js",
     "dev": "nodemon index.js",
@@ -19,6 +19,8 @@
   "dependencies": {
     "express": "^4.18.2",
     "puppeteer": "^24.29.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "esbuild": "^0.19.11"
   },
   "devDependencies": {
