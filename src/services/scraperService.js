@@ -1,4 +1,5 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import {
   isApiOnlyDomainName,
   getExtractorForDomainName
@@ -39,6 +40,8 @@ class ScraperService {
      * @type {Promise<import('puppeteer').Browser>|null}
      */
     this.browserPromise = null;
+    // Configure puppeteer-extra plugins once
+    puppeteer.use(StealthPlugin());
   }
 
   /**
