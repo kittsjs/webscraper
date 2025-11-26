@@ -263,8 +263,8 @@ class ScraperService {
       // Set a reasonable viewport size
       await page.setViewport({ width: 1920, height: 1080 });
 
-      // Tighter navigation timeout (shorter to avoid long hangs on problematic pages)
-      page.setDefaultNavigationTimeout(15000);
+      // Tighter navigation timeout
+      page.setDefaultNavigationTimeout(30000);
       
       console.log('Navigating to page...');
       
@@ -272,15 +272,16 @@ class ScraperService {
       try {
         await page.goto(url, {
           waitUntil: 'domcontentloaded',
-          timeout: 15000
+          timeout: 30000
         });
       } catch (gotoError) {
-        // If navigation times out, log and continue with whatever content loaded so far.
-        if (gotoError.name === 'TimeoutError' || gotoError.message.includes('Navigation timeout')) {
-          console.warn('Navigation timed out, continuing with partially loaded page...');
-        } else if (gotoError.message.includes('socket') || gotoError.message.includes('hang up')) {
-          // For connection reset / socket issues, rethrow so the caller can surface a helpful error.
-          throw gotoError;
+        // If initial goto fails, try with a different wait strategy
+        if (gotoError.message.includes('socket') || gotoError.message.includes('hang up')) {
+          console.log('First attempt failed, trying alternative approach...');
+          await page.goto(url, {
+            waitUntil: 'networkidle2',
+            timeout: 30000
+          });
         } else {
           throw gotoError;
         }
