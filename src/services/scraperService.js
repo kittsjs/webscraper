@@ -286,6 +286,19 @@ class ScraperService {
           throw gotoError;
         }
       }
+
+      // Debug logging to see what actually loaded on the page (helpful on server)
+      try {
+        const finalUrl = page.url();
+        const title = await page.title();
+        const bodyPreview = await page.evaluate(() => {
+          const text = document.body ? (document.body.innerText || '') : '';
+          return text.slice(0, 500);
+        });
+        console.log('Puppeteer page debug:', { finalUrl, title, bodyPreview });
+      } catch (debugErr) {
+        console.error('Error collecting Puppeteer debug info:', debugErr.message || debugErr);
+      }
       
       console.log('Page loaded, waiting briefly for dynamic content...');
       
