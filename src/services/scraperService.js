@@ -59,7 +59,8 @@ class ScraperService {
       console.log('Launching shared Puppeteer browser instance...');
       this.browserPromise = puppeteer.launch({
         headless: 'new',
-        executablePath: puppeteer.executablePath(),
+        // Use the Chrome binary we resolved above instead of Puppeteer's bundled one.
+        executablePath: chromePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
