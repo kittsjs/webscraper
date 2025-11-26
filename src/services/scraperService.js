@@ -3,36 +3,44 @@ import {
   isApiOnlyDomainName,
   getExtractorForDomainName
 } from './domainConfig/domainMappings.js';
-import { execSync } from 'child_process';
-import fs from 'fs';
-
-function installAndFindChrome() {
-  // if env var exists and is valid, use it
-  const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (envPath && fs.existsSync(envPath)) return envPath;
-
-  // look for chrome under the runtime installer folder
-  const runtimeBase = '/tmp/puppeteer_chrome';
-  try {
-    // if we already installed at runtime, the binary should exist
-    if (fs.existsSync(runtimeBase)) {
-      const out = execSync("find /tmp/puppeteer_chrome -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
-      if (out) return out.split('\\n')[0];
-
-
-    }
-  } catch (e) {}
-
-  // fallback: attempt quick system find (fast, limited depth)
-  try {
-    const out2 = execSync("find /opt/render/project/.render /opt/render -maxdepth 6 -type f \\( -name chrome -o -name chrome-headless-shell \\) -perm -111 2>/dev/null || true", { encoding: 'utf8' }).trim();
-    if (out2) return out2.split('\\n')[0];
-  } catch (e) {}
-
-  return null;
-}
 
 class ScraperService {
+  constructor() {
+    /**
+     * Lazily created shared Puppeteer browser instance to avoid relaunch cost
+     * @type {Promise<import('puppeteer').Browser>|null}
+     */
+    this.browserPromise = null;
+  }
+
+  /**
+   * Returns a shared Puppeteer browser instance, creating it on first use
+   * @returns {Promise<import('puppeteer').Browser>}
+   */
+  async getBrowser() {
+    if (!this.browserPromise) {
+      console.log('Launching shared Puppeteer browser instance...');
+      this.browserPromise = puppeteer.launch({
+        headless: 'new',
+        executablePath: puppeteer.executablePath(),
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-dev-shm-usage',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process'
+        ],
+        ignoreHTTPSErrors: true
+      }).catch(err => {
+        // If launch fails, reset so we can retry next time
+        this.browserPromise = null;
+        throw err;
+      });
+    }
+
+    return this.browserPromise;
+  }
   /**
    * Normalizes domain from URL by removing www. prefix
    * @param {string} url - The URL to analyze
@@ -84,9 +92,9 @@ class ScraperService {
   }
 
   /**
-   * Extracts product image from an e-commerce URL
+   * Extracts product images from an e-commerce URL
    * @param {string} url - The URL of the e-commerce product page
-   * @returns {Promise<string|null>} Single image URL or null if not found
+   * @returns {Promise<{image: string|null, imageList: string[]}>}
    */
   async extractProductImages(url) {
     try {
@@ -104,15 +112,16 @@ class ScraperService {
         console.log('Using API-only extraction (skipping Puppeteer)...');
         
         // For API-only domains, pass null as page since it won't be used
-        const imageUrl = await extractor(null, url);
+        const imageData = await extractor(null, url);
+        const payload = this.formatImageResult(imageData);
         
-        if (imageUrl) {
-          console.log(`Extracted image: ${imageUrl}`);
+        if (payload.image) {
+          console.log(`Extracted image: ${payload.image}`);
         } else {
           console.log('No image found');
         }
         
-        return imageUrl;
+        return payload;
       }
 
       // For scraping-based domains, use Puppeteer
@@ -135,36 +144,12 @@ class ScraperService {
    * Extracts product image using Puppeteer (for scraping-based domains)
    * @param {string} url - The URL of the e-commerce product page
    * @param {Function} extractor - The extraction function to use
-   * @returns {Promise<string|null>} Single image URL or null if not found
+   * @returns {Promise<{image: string|null, imageList: string[]}>}
    */
   async extractWithPuppeteer(url, extractor) {
-    let browser = null;
-    
     try {
       console.log('Using Puppeteer for extraction...');
-      const chromePath = installAndFindChrome();
-      console.log('resolved chromePath: ', chromePath);
-      if (!chromePath) {
-        console.error('Chrome executable not found. Checked common Render paths.');
-        // optional: print dirs for debugging
-        try { console.error('ls /opt/render/project/.render ->', fs.readdirSync('/opt/render/project/.render')); } catch(e){}
-        throw new Error('Chrome binary not found');
-      }
-      // Launch browser with headless mode and stealth settings
-      browser = await puppeteer.launch({
-        headless: 'new',
-        executablePath: chromePath,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-dev-shm-usage',
-          '--disable-web-security',
-          '--disable-features=IsolateOrigins,site-per-process'
-        ],
-        ignoreHTTPSErrors: true
-      });
-
+      const browser = await this.getBrowser();
       const page = await browser.newPage();
       
       // Set a realistic user agent to avoid bot detection
@@ -230,14 +215,28 @@ class ScraperService {
       
       // Set a reasonable viewport size
       await page.setViewport({ width: 1920, height: 1080 });
+
+      // Speed optimizations: block non-essential resources (fonts, media) to reduce load time
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        const resourceType = request.resourceType();
+        // We need document, script, xhr/fetch, stylesheet for layout; images are optional since we usually just read src/background-image
+        if (['media', 'font'].includes(resourceType)) {
+          return request.abort();
+        }
+        return request.continue();
+      });
+
+      // Tighter navigation timeout
+      page.setDefaultNavigationTimeout(30000);
       
       console.log('Navigating to page...');
       
       // Navigate to the URL with better error handling
       try {
         await page.goto(url, {
-          waitUntil: 'load',
-          timeout: 60000
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
         });
       } catch (gotoError) {
         // If initial goto fails, try with a different wait strategy
@@ -245,38 +244,63 @@ class ScraperService {
           console.log('First attempt failed, trying alternative approach...');
           await page.goto(url, {
             waitUntil: 'networkidle2',
-            timeout: 60000
+            timeout: 30000
           });
         } else {
           throw gotoError;
         }
       }
       
-      console.log('Page loaded, waiting for dynamic content...');
+      console.log('Page loaded, waiting briefly for dynamic content...');
 
-      // Wait for dynamic content using Promise-based delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Short wait for dynamic content; most sites render primary gallery quickly
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       console.log('Extracting image using site-specific extractor...');
       
       // Call the domain-specific extraction function
       // Pass both page and url - extractors can use either or both
-      const imageUrl = await extractor(page, url);
+      const imageData = await extractor(page, url);
+      const payload = this.formatImageResult(imageData);
       
-      if (imageUrl) {
-        console.log(`Extracted image: ${imageUrl}`);
+      if (payload.image) {
+        console.log(`Extracted image: ${payload.image}`);
       } else {
         console.log('No image found');
       }
       
-      return imageUrl;
+      return payload;
 
-    } finally {
-      if (browser) {
-        await browser.close();
-      }
+    } catch (error) {
+      console.error('Puppeteer extraction error:', error.message);
+      throw error;
     }
   }
 }
+
+/**
+ * Normalizes varying extractor responses into unified shape
+ */
+ScraperService.prototype.formatImageResult = function(imageData) {
+  if (!imageData) {
+    return { image: null, imageList: [] };
+  }
+
+  if (typeof imageData === 'string') {
+    return { image: imageData, imageList: [] };
+  }
+
+  const imageList = Array.isArray(imageData.imageList) ? imageData.imageList : [];
+  let image = imageData.image ?? null;
+
+  if (!image && imageList.length > 0) {
+    image = imageList[0];
+  }
+
+  return {
+    image,
+    imageList
+  };
+};
 
 export default new ScraperService();
